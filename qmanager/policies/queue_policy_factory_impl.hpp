@@ -50,6 +50,9 @@ std::shared_ptr<queue_policy_base_t> create_queue_policy (const std::string &pol
         } else if (policy == "conservative") {
             if (reapi == "module")
                 p = std::make_shared<queue_policy_conservative_t<reapi_module_t>> ();
+        } else if (policy == "fcfs_moldability") {
+            if (reapi == "module")
+                p = std::make_shared<queue_policy_fcfs_moldability_t<reapi_module_t>> ();
         }
     } catch (std::bad_alloc &e) {
         errno = ENOMEM;

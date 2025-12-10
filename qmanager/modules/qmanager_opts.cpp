@@ -55,7 +55,7 @@ done:
 bool queue_prop_t::known_queue_policy (const std::string &policy)
 {
     bool rc = false;
-    if (policy == "fcfs" || policy == "easy" || policy == "hybrid" || policy == "conservative")
+    if (policy == "fcfs" || policy == "easy" || policy == "hybrid" || policy == "conservative" || policy == "fcfs_moldability")
         rc = true;
     return rc;
 }
