@@ -23,6 +23,8 @@
 #include "qmanager/policies/queue_policy_hybrid_impl.hpp"
 #include "qmanager/policies/queue_policy_conservative.hpp"
 #include "qmanager/policies/queue_policy_conservative_impl.hpp"
+#include "qmanager/policies/queue_policy_fcfs_moldability.hpp"
+#include "qmanager/policies/queue_policy_fcfs_moldability_impl.hpp"
 #include <string>
 
 namespace Flux {
