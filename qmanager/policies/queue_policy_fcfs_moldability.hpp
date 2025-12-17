@@ -42,12 +42,15 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
     int cancel (void *h, flux_jobid_t id, bool noent_ok) override;
 
    private:
-    int send_jobspec_update(flux_t *h, 
-                            const std::shared_ptr<job_t> &job, 
-                            json_t *count,
-                            json_t *duration);
+    int select_from (json_t *task_counts, json_t *durations);
+    int transform_R (const char *R_in, const char *jobspec, char **R_out);
     int pack_jobs (json_t *jobs);
     int allocate_jobs (void *h, bool use_alloced_queue);
+    int recursive_get_slot_count (int *slot_count,
+                                     json_t *curr_resource,
+                                     json_error_t *error,
+                                     bool *is_node_specified,
+                                     int level);
     bool m_queue_depth_limit = false;
     job_map_iter m_iter;
 };

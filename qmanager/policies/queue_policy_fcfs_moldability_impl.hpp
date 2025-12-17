@@ -24,6 +24,15 @@ namespace detail {
 ////////////////////////////////////////////////////////////////////////////////
 
 template<class reapi_type>
+int queue_policy_fcfs_moldability_t<reapi_type>::select_from (json_t *task_counts, json_t *durations) {
+    /*
+    Select task count and duration pair from lists 
+    Use the task count - core count and planner api to calculate a tstart estimate
+    */
+   return 0;
+}
+
+template<class reapi_type>
 int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (json_t *jobs)
 {
     unsigned int qd = 0;
@@ -41,20 +50,29 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (json_t *jobs)
         json_t *system_obj = json_object_get(attributes_obj, "system");
         json_t *task_counts;
         json_t *durations;
-        if ((task_counts = json_object_get(system_obj, "task_counts")) && json_is_array(task_counts)) {
-            json_t *count = json_array_get(task_counts, 0);
-            resources_obj = json_object_get(jobspec_obj, "resources");
-            if (json_is_array(resources_obj)) {
-                json_t* res0 = json_array_get(resources_obj, 0);
-                if (json_is_object(res0)) {
-                    json_object_set_new(res0, "count", json_incref(count));                      
-                }
+        if ((task_counts = json_object_get (system_obj, "task_counts")) && json_is_array (task_counts) 
+             && (durations = json_object_get (system_obj, "durations")) && json_is_array (durations)) {
+            int idx = select_from (task_counts, durations);
+            json_t *count = json_array_get (task_counts, idx);
+            json_t *duration = json_array_get (durations, idx);
+            resources_obj = json_object_get (jobspec_obj, "resources");
+            if (!json_is_array (resources_obj)) {
+                // malformed jobspec (should not be able to be reached)
+                json_decref (jobs);
+                errno = EINVAL;
+                return -1;
             }
+                json_t* res0 = json_array_get (resources_obj, 0);
+                if (!json_is_object (res0)) {
+                    // malformed jobspec (should not be able to be reached)
+                    json_decref (jobs);
+                    errno = EINVAL;
+                    return -1;
+                }
+                json_object_set_new(res0, "count", json_incref(count));                      
+                json_object_set_new(system_obj, "duration", json_incref(duration));
         }
-        if ((durations = json_object_get(system_obj, "durations")) && json_is_array(durations)) {
-            json_t *duration = json_array_get(durations, 0);
-            json_object_set_new(system_obj, "duration", json_incref(duration));
-        }
+
         job->jobspec = std::string(json_dumps(jobspec_obj, JSON_COMPACT));
         json_decref(jobspec_obj);
         if (!(jobdesc =
@@ -118,14 +136,130 @@ int queue_policy_fcfs_moldability_t<reapi_type>::allocate_jobs (void *h, bool us
 }
 
 template<class reapi_type>
+int queue_policy_fcfs_moldability_t<reapi_type>::recursive_get_slot_count (int *slot_count,
+                                                                            json_t *curr_resource,
+                                                                            json_error_t *error,
+                                                                            bool *is_node_specified,
+                                                                            int level)
+{
+    size_t index;
+    json_t *value;
+    const char *type;
+    json_t *count;
+    json_t *with;
+    if (level == 0 ) {
+        *slot_count = -1;
+        *is_node_specified = false;
+    }
+    if (json_array_size (curr_resource) == 0) {
+        return -1;
+    }
+    json_array_foreach (curr_resource, index, value) {
+        with = NULL;
+        if (json_unpack_ex (value,
+                            error,
+                            0,
+                            "{s:s s:o s?o}",
+                            "type", &type,
+                            "count", &count,
+                            "with", &with) < 0) {
+            return -1;
+        }
+        if (strcmp (type, "slot") == 0) {
+            if (*slot_count > 0) {
+                return (*slot_count = -1);
+            }
+            if (!json_is_integer (count)) {
+                return -1;
+            }
+            return (*slot_count = json_integer_value (count));
+        }
+        if (strcmp (type, "node") == 0) {
+            if (*is_node_specified) {
+                return (*slot_count = -1);
+            }
+            *is_node_specified = true;
+        }
+        if (with) {
+            recursive_get_slot_count (slot_count,
+                                      with,
+                                      error,
+                                      is_node_specified,
+                                      level+1);
+        }
+    }
+    return (*slot_count);
+}
+
+template<class reapi_type>
+int queue_policy_fcfs_moldability_t<reapi_type>::transform_R (const char * R_in, const char *jobspec, char** R_out)
+{
+    json_error_t jerr;
+    json_t* R_obj;
+    json_t* jobspec_obj;
+    json_t* resources;
+    json_t* exec;
+    bool is_node_specified;
+    int total_slots = 0;
+    size_t i;
+
+    if(!(R_obj = json_loads (R_in, 0, &jerr))) {
+        return -1;
+    }
+    if (!(jobspec_obj = json_loads (jobspec, 0, &jerr))) {
+        json_decref (R_obj);
+        return -1;
+    }
+    if (!(resources = json_object_get (jobspec_obj, "resources")) || !json_is_array (resources)) {
+        json_decref (resources);
+        json_decref (jobspec_obj);
+        json_decref (R_obj);
+        return -1;
+    }
+
+    if (recursive_get_slot_count (&total_slots,
+                                      resources,
+                                      &jerr,
+                                      &is_node_specified,
+                                      0) < 0) {
+            json_decref (resources);
+            json_decref (jobspec_obj);
+            json_decref (R_obj);
+            return -1;
+        }
+
+    if (!(exec = json_object_get(R_obj, "execution")) || !json_is_object(exec)) {
+        json_decref (resources);
+        json_decref (jobspec_obj);
+        json_decref (R_obj);
+        return -1;
+    }
+
+    json_object_set_new(exec, "nslots", json_integer(total_slots));
+    if (!(*R_out = json_dumps(R_obj, JSON_COMPACT))) {
+        json_decref (exec);
+        json_decref (resources);
+        json_decref(jobspec_obj);
+        json_decref(R_obj);
+        return -1;
+    }
+
+    json_decref (exec);
+    json_decref (resources);
+    json_decref(jobspec_obj);
+    json_decref(R_obj);
+    return 0;
+}
+
+template<class reapi_type>
 int queue_policy_fcfs_moldability_t<reapi_type>::handle_match_success (flux_jobid_t jobid,
                                                            const char *status,
                                                            const char *R,
                                                            int64_t at,
                                                            double ov)
 {
-    json_t *R_obj = json_loads(R, 0, NULL);
-    
+    char *R_final;
+
     if (!is_sched_loop_active ()) {
         errno = EINVAL;
         return -1;
@@ -135,32 +269,14 @@ int queue_policy_fcfs_moldability_t<reapi_type>::handle_match_success (flux_jobi
         errno = EINVAL;
         return -1;
     }
-    
-    json_t *jobspec_obj = json_loads(job->jobspec.c_str(), 0, NULL);
-    int total_slots = 0;
 
-    /* jobspec.resources is an array, e.g.:
-     *   "resources": [ { "count": 2 }, { "count": 3 } ]
-     */
-
-    json_t *resources = json_object_get(jobspec_obj, "resources");
-    if (resources && json_is_array(resources)) {
-        size_t i;
-        json_t *res;
-        json_array_foreach(resources, i, res) {
-            json_t *count = json_object_get(res, "count");
-            if (count && json_is_integer(count))
-                total_slots += json_integer_value(count);
-        }
+    if (transform_R (R, job->jobspec.c_str(), &R_final) < 0) {
+        errno = EINVAL;
+        return -1;
     }
-    json_decref(jobspec_obj);
-    json_t *exec = json_object_get(R_obj, "execution");
-    json_object_set_new(exec, "nslots", json_integer(total_slots));
-    R = json_dumps(R_obj, JSON_COMPACT);
-    json_decref(R_obj);
 
     job->schedule.reserved = std::string ("RESERVED") == status ? true : false;
-    job->schedule.R = R;
+    job->schedule.R = R_final;
     job->schedule.at = at;
     job->schedule.ov = ov;
     m_iter = to_running (m_iter, true);
