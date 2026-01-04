@@ -42,9 +42,35 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
     int cancel (void *h, flux_jobid_t id, bool noent_ok) override;
 
    private:
-    int select_from (json_t *task_counts, json_t *durations);
+    class selector_t {
+        public:
+         virtual ~selector_t() = default;
+         virtual int select(queue_policy_fcfs_moldability_t *policy,
+                            void *h,
+                            json_t *task_counts,
+                            json_t *durations) = 0;
+        protected:
+         std::pair<int,int> get_cores(void *h);
+    };
+    class selector_largest_fit_t final : public selector_t {
+        public:
+         int select(queue_policy_fcfs_moldability_t *policy,
+                    void *h,
+                    json_t *task_counts,
+                    json_t *durations) override;
+    };
+    class selector_tanh_t final : public selector_t {
+        public:
+         int select(queue_policy_fcfs_moldability_t *policy,
+                    void *h,
+                    json_t *task_counts,
+                    json_t *durations) override;
+    };
+    std::unique_ptr<selector_t> m_selector;
+    std::string m_selector_name = "largest_fit";
+    int select_from(void *h, json_t *task_counts, json_t *durations);
     int transform_R (const char *R_in, const char *jobspec, char **R_out);
-    int pack_jobs (json_t *jobs);
+    int pack_jobs (void *h, json_t *jobs);
     int allocate_jobs (void *h, bool use_alloced_queue);
     int recursive_get_slot_count (int *slot_count,
                                      json_t *curr_resource,

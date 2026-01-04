@@ -14,6 +14,7 @@
 #include "qmanager/policies/queue_policy_fcfs_moldability.hpp"
 #include "qmanager/policies/base/queue_policy_base.hpp"
 #include <flux/core/job.h>
+#include <flux/idset.h>
 
 namespace Flux {
 namespace queue_manager {
@@ -24,16 +25,191 @@ namespace detail {
 ////////////////////////////////////////////////////////////////////////////////
 
 template<class reapi_type>
-int queue_policy_fcfs_moldability_t<reapi_type>::select_from (json_t *task_counts, json_t *durations) {
-    /*
-    Select task count and duration pair from lists 
-    Use the task count - core count and planner api to calculate a tstart estimate
-    */
-   return 0;
+std::pair<int, int> queue_policy_fcfs_moldability_t<reapi_type>::selector_t::get_cores(void *h) 
+{
+    int rc = -1;
+    flux_t *fh = (flux_t *)h;
+    flux_future_t *f = NULL;
+    char *all_ids, *core_ids;
+    json_t *down_obj, *allocated_obj, *entry;
+    size_t i;
+    struct idset *all_ranks, *alloc_down_ranks = idset_decode (""), *core_ranks;
+    if (!fh) {
+        errno = EINVAL;
+        return std::pair{-1, -1};
+    }
+    if (!(f = flux_rpc (fh, "resource.sched-status", NULL, 0, 0))) {
+        return std::pair{-1, -1};
+    }
+    if ((rc = flux_rpc_get_unpack (f,
+                                   "{s:{s:{s:[{s:s s:{s:s}}]}} s:{s:{s:o}} s:{s:{s:o}}}",
+                                   "all",
+                                   "execution",
+                                   "R_lite",
+                                   "rank",
+                                   &all_ids,
+                                   "children",
+                                   "core",
+                                   &core_ids,
+                                   "down",
+                                   "execution",
+                                   "R_lite",
+                                   &down_obj,
+                                   "allocated",
+                                   "execution",
+                                   "R_lite",
+                                   &allocated_obj
+                                   ))
+        < 0) {
+        return std::pair{-1, -1};
+    }
+    json_array_foreach (down_obj, i, entry) {
+        const char *rank = NULL;
+        if (json_unpack (entry, "{s:s}", "rank", &rank) == 0) {
+            idset_decode_add (alloc_down_ranks, rank, -1, NULL);
+        }
+    }
+    json_array_foreach (allocated_obj, i, entry) {
+        const char *rank = NULL;
+        if (json_unpack (entry, "{s:s}", "rank", &rank) == 0) {
+            idset_decode_add (alloc_down_ranks, rank, -1, NULL);
+        }
+    }
+    std::cout << "allocated_ranks: " << idset_count (alloc_down_ranks) << std::endl;
+    all_ranks = idset_decode (all_ids);
+    core_ranks = idset_decode (core_ids);
+    // return all cores count and free cores
+    return std::pair{(idset_count (all_ranks))*(idset_count (core_ranks)), (idset_count (all_ranks) - idset_count (alloc_down_ranks))*(idset_count (core_ranks))};
 }
 
 template<class reapi_type>
-int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (json_t *jobs)
+int queue_policy_fcfs_moldability_t<reapi_type>::selector_largest_fit_t::select(queue_policy_fcfs_moldability_t *policy,
+                                                                                void *h,
+                                                                                json_t *task_counts,
+                                                                                json_t *durations)  
+{ 
+    size_t n = json_array_size (task_counts);
+    auto [all_cores, free_cores] = this->get_cores (h);
+    
+    if (all_cores == -1) return -1;
+    int best_idx = -1;
+    long long best_count = -1;
+    // Track smallest as fallback if nothing fits
+    int min_idx = 0;
+    long long min_count = LLONG_MAX;
+    for (size_t i = 0; i < n; i++) {
+        json_t *tc = json_array_get (task_counts, i);
+        if (!json_is_integer (tc))
+            continue;
+        long long count = json_integer_value (tc);
+        // Ignore nonsensical entries
+        if (count <= 0)
+            continue;
+        // record smallest for fallback
+        if (count < min_count) {
+            min_count = count;
+            min_idx = (int)i;
+        }
+        // best fit: largest <= free_cores
+        if (count <= free_cores && count > best_count) {
+            best_count = count;
+            best_idx = (int)i;
+        }
+    }
+    // If nothing fit, fall back to smallest valid entry we saw
+    if (best_idx < 0) {
+        return (min_count == LLONG_MAX) ? -1 : min_idx;
+    }
+    return best_idx;
+}
+  
+template<class reapi_type>
+int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select(queue_policy_fcfs_moldability_t *policy,
+                                                                          void *h,
+                                                                          json_t *task_counts,
+                                                                          json_t *durations)  
+{
+    double load = 0;
+    for(auto [_,x]: policy->m_pending) {
+        json_error_t jerr;
+        json_t *jobspec_obj = json_loads (policy->m_jobs[x]->jobspec.c_str (), 0, &jerr);
+        json_t *resources_obj_x;
+        json_t *system_obj_x;
+        json_t *task_counts_x;
+        size_t m = 0;
+
+        if (json_unpack_ex (jobspec_obj,
+                            &jerr,
+                            0,
+                            "{s:{s:o} s:o}",
+                            "attributes",
+                            "system",
+                            &system_obj_x,
+                            "resources",
+                            &resources_obj_x) == 0)
+        {
+            if ((task_counts_x = json_object_get (system_obj_x, "task_counts"))
+                && json_is_array (task_counts_x)) 
+            {
+                size_t n = json_array_size (task_counts_x);
+                std::vector<long long> v;
+                for (size_t i = 0; i < n; i++) {
+                    json_t *tc = json_array_get (task_counts_x, i);
+                    if (!json_is_integer (tc))
+                        continue;
+                    long long count = json_integer_value (tc);
+                    // Ignore nonsensical entries
+                    if (count <= 0)
+                        continue;
+                    v.push_back(count);
+                }
+                
+                m = v.size();
+                if (m > 0) {
+                    size_t mid = m / 2;
+                    std::nth_element(v.begin(), v.begin() + mid, v.end());
+                    if (m % 2 == 1) {
+                        load += v[mid];
+                    } else {
+                        long long upper = v[mid];
+                        std::nth_element(v.begin(), v.begin() + mid - 1, v.begin() + mid);
+                        long long lower = v[mid - 1];
+                        load += (lower + upper) / 2.0;
+                    }
+                }
+            }
+            if (m == 0) {
+                int total_slots;
+                bool is_node_specified;
+                policy->recursive_get_slot_count (&total_slots,
+                                                  resources_obj_x,
+                                                  &jerr,
+                                                  &is_node_specified,
+                                                  0);
+                load += total_slots > 0 ? total_slots : 0;
+            } 
+        }
+        
+    }
+    auto [all_cores, free_cores] = this->get_cores (h);
+    std::cout << "median_sum, free_cores: " << load << ", " << free_cores << std::endl;
+    load = (free_cores + load) / all_cores;
+    if (load > 1.0) load = 1.0;
+
+    std::cout << "load: " << load << std::endl;
+    return 0;
+}
+
+template<class reapi_type>
+int queue_policy_fcfs_moldability_t<reapi_type>::select_from (void *h, json_t *task_counts, json_t *durations) 
+{
+    if (!m_selector)
+        m_selector = std::make_unique<selector_largest_fit_t>();
+    return m_selector->select(this, h, task_counts, durations);
+}
+
+template<class reapi_type>
+int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *jobs)
 {
     unsigned int qd = 0;
     std::shared_ptr<job_t> job;
@@ -44,37 +220,45 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (json_t *jobs)
 
         // Unpack jobspec and choose walltime and task count if necessary
         json_error_t jerr;
-        json_t *jobspec_obj = json_loads(job->jobspec.c_str (), 0, &jerr);
+        json_t *jobspec_obj = json_loads (job->jobspec.c_str (), 0, &jerr);
         json_t *resources_obj;
-        json_t *attributes_obj = json_object_get(jobspec_obj, "attributes");
-        json_t *system_obj = json_object_get(attributes_obj, "system");
+        json_t *system_obj;
         json_t *task_counts;
         json_t *durations;
-        if ((task_counts = json_object_get (system_obj, "task_counts")) && json_is_array (task_counts) 
-             && (durations = json_object_get (system_obj, "durations")) && json_is_array (durations)) {
-            int idx = select_from (task_counts, durations);
+        int idx;
+
+        if (json_unpack_ex (jobspec_obj,
+                            &jerr,
+                            0,
+                            "{s:{s:o} s:o}",
+                            "attributes",
+                            "system",
+                            &system_obj,
+                            "resources",
+                            &resources_obj
+                            ) == 0
+            && (task_counts = json_object_get (system_obj, "task_counts"))
+            && (durations = json_object_get (system_obj, "durations"))
+            && json_is_array (task_counts) 
+            && json_is_array (durations) 
+            && json_is_array (resources_obj)
+            && (idx = select_from (h, task_counts, durations)) >= 0) 
+        {
             json_t *count = json_array_get (task_counts, idx);
             json_t *duration = json_array_get (durations, idx);
-            resources_obj = json_object_get (jobspec_obj, "resources");
-            if (!json_is_array (resources_obj)) {
+            json_t* res0 = json_array_get (resources_obj, 0);
+            if (!json_is_object (res0)) {
                 // malformed jobspec (should not be able to be reached)
                 json_decref (jobs);
                 errno = EINVAL;
                 return -1;
             }
-                json_t* res0 = json_array_get (resources_obj, 0);
-                if (!json_is_object (res0)) {
-                    // malformed jobspec (should not be able to be reached)
-                    json_decref (jobs);
-                    errno = EINVAL;
-                    return -1;
-                }
-                json_object_set_new(res0, "count", json_incref(count));                      
-                json_object_set_new(system_obj, "duration", json_incref(duration));
+            json_object_set_new (res0, "count", json_incref(count));                      
+            json_object_set_new (system_obj, "duration", json_incref(duration));
         }
 
-        job->jobspec = std::string(json_dumps(jobspec_obj, JSON_COMPACT));
-        json_decref(jobspec_obj);
+        job->jobspec = std::string(json_dumps (jobspec_obj, JSON_COMPACT));
+        json_decref (jobspec_obj);
         if (!(jobdesc =
                   json_pack ("{s:I s:s}", "jobid", job->id, "jobspec", job->jobspec.c_str ()))) {
             json_decref (jobs);
@@ -102,6 +286,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::allocate_jobs (void *h, bool us
     json_t *jobs = nullptr;
     char *jobs_str = nullptr;
     job_map_iter iter;
+    int free_cores;
 
     // move jobs in m_pending_provisional queue into
     // m_pending. Note that c++11 doesn't have a clean way
@@ -116,7 +301,8 @@ int queue_policy_fcfs_moldability_t<reapi_type>::allocate_jobs (void *h, bool us
         errno = ENOMEM;
         return -1;
     }
-    if (pack_jobs (jobs) < 0)
+
+    if (pack_jobs (h, jobs) < 0)
         return -1;
 
     set_sched_loop_active (true);
@@ -192,7 +378,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::recursive_get_slot_count (int *
 }
 
 template<class reapi_type>
-int queue_policy_fcfs_moldability_t<reapi_type>::transform_R (const char * R_in, const char *jobspec, char** R_out)
+int queue_policy_fcfs_moldability_t<reapi_type>::transform_R (const char *R_in, const char *jobspec, char **R_out)
 {
     json_error_t jerr;
     json_t* R_obj;
@@ -228,7 +414,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::transform_R (const char * R_in,
             return -1;
         }
 
-    if (!(exec = json_object_get(R_obj, "execution")) || !json_is_object(exec)) {
+    if (!(exec = json_object_get (R_obj, "execution")) || !json_is_object(exec)) {
         json_decref (resources);
         json_decref (jobspec_obj);
         json_decref (R_obj);
@@ -334,7 +520,31 @@ int queue_policy_fcfs_moldability_t<reapi_type>::cancel (void *h, flux_jobid_t i
 template<class reapi_type>
 int queue_policy_fcfs_moldability_t<reapi_type>::apply_params ()
 {
-    return queue_policy_base_t::apply_params ();
+    int rc = queue_policy_base_t::apply_params ();
+    try {
+        std::unordered_map<std::string, std::string>::const_iterator i;
+        if ((i = m_pparams.find ("moldability-policy")) != m_pparams.end ()) {
+            if (i->second == "\"largest_fit\"" || i->second == "\"tanh\"") {
+                if (i->second == "\"tanh\"") {
+                    m_selector_name = "tanh";
+                    m_selector = std::make_unique<selector_tanh_t>();
+                }
+                else {
+                    m_selector_name = "largest_fit";
+                    m_selector = std::make_unique<selector_largest_fit_t>();
+                }
+            } else {
+                rc += -1;
+                errno = EINVAL;
+            }
+        } else {
+            m_selector = std::make_unique<selector_largest_fit_t> ();
+        }
+    } catch (const std::invalid_argument &e) {
+        rc = -1;
+        errno = EINVAL;
+    }
+    return rc;
 }
 
 template<class reapi_type>
