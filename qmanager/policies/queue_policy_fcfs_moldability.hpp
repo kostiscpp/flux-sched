@@ -44,31 +44,45 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
    private:
     class selector_t {
         public:
-         virtual ~selector_t() = default;
-         virtual int select(queue_policy_fcfs_moldability_t *policy,
-                            void *h,
-                            json_t *task_counts,
-                            json_t *durations) = 0;
+         virtual ~selector_t () = default;
+         virtual int select (queue_policy_fcfs_moldability_t *policy,
+                             void *h,
+                             json_t *task_counts,
+                             json_t *durations,
+                             json_t *parallelism) = 0;
         protected:
-         std::pair<int,int> get_cores(void *h);
+         std::tuple<int, int, int> get_cores (void *h);
     };
     class selector_largest_fit_t final : public selector_t {
         public:
-         int select(queue_policy_fcfs_moldability_t *policy,
-                    void *h,
-                    json_t *task_counts,
-                    json_t *durations) override;
+         int select (queue_policy_fcfs_moldability_t *policy,
+                     void *h,
+                     json_t *task_counts,
+                     json_t *durations,
+                     json_t *parallelism) override;
     };
     class selector_tanh_t final : public selector_t {
         public:
-         int select(queue_policy_fcfs_moldability_t *policy,
-                    void *h,
-                    json_t *task_counts,
-                    json_t *durations) override;
+         int select (queue_policy_fcfs_moldability_t *policy,
+                     void *h,
+                     json_t *task_counts,
+                     json_t *durations,
+                     json_t *parallelism) override;
+         int effective_task_count (json_t *parallelism,
+                                      double load, 
+                                      int all_nodes,
+                                      int cores_per_node);
+        private:
+         double k = 0.9;
+         double b = 8.0;
+         double beta = 0.7; 
+         double gamma = 3.0;
+         double delta = 0.3; 
+         double load_breakpoint=0.8;
     };
     std::unique_ptr<selector_t> m_selector;
     std::string m_selector_name = "largest_fit";
-    int select_from(void *h, json_t *task_counts, json_t *durations);
+    int select_from (void *h, json_t *task_counts, json_t *durations, json_t *parallelism);
     int transform_R (const char *R_in, const char *jobspec, char **R_out);
     int pack_jobs (void *h, json_t *jobs);
     int allocate_jobs (void *h, bool use_alloced_queue);
