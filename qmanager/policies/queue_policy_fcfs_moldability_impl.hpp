@@ -75,7 +75,7 @@ std::tuple<int, int, int> queue_policy_fcfs_moldability_t<reapi_type>::selector_
             idset_decode_add (alloc_down_ranks, rank, -1, NULL);
         }
     }
-    std::cout << "allocated_ranks: " << idset_count (alloc_down_ranks) << std::endl;
+
     all_ranks = idset_decode (all_ids);
     core_ranks = idset_decode (core_ids);
     // return all nodes count, free nodes and cores per node
@@ -127,10 +127,10 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_largest_fit_t::select(
 template<class reapi_type>
 int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::effective_task_count (json_t *parallelism, 
                                                                                            double load,
-                                                                                           int all_nodes, 
+                                                                                           int max_task_count, 
                                                                                            int cores_per_node) 
 {
-    int cluster_size = 2 * ((all_nodes * cores_per_node + cores_per_node - 1) / cores_per_node) * cores_per_node;
+    int cluster_size = 2 * ((max_task_count + cores_per_node - 1) / cores_per_node) * cores_per_node;
     if (!parallelism || !json_is_number(parallelism))
         return -1;
     double p_app = json_number_value(parallelism);
@@ -218,8 +218,23 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
     auto [all_nodes, free_nodes, cores_per_node] = this->get_cores (h);
     load = (free_nodes * cores_per_node + load) / (all_nodes * cores_per_node);
     if (load > 1.0) load = 1.0;
-    
-    if((best_task_count = effective_task_count (parallelism, load, all_nodes, cores_per_node)) < 0) {
+
+    int max_task_count = 1;
+    ssize_t n = json_array_size (task_counts);
+    for (size_t i = 0; i < n; i++) {
+        json_t *tc = json_array_get (task_counts, i);
+        if (!json_is_integer (tc))
+            continue;
+        long long count = json_integer_value (tc);
+        // Ignore nonsensical entries
+        if (count <= 0)
+            continue;
+        // record smallest for fallback
+        if (max_task_count < count) 
+            max_task_count = count;
+    }
+
+    if((best_task_count = effective_task_count (parallelism, load, max_task_count, cores_per_node)) < 0) {
         return 0;
     }
 
@@ -239,7 +254,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
             best_i = (int)i;
         }
     }
-    std::cout << "best_task_count = " << best_task_count << ", best_i = " << best_i << std::endl; 
+
     return best_i;
 }
 

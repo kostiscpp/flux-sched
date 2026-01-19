@@ -70,7 +70,7 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
                      json_t *parallelism) override;
          int effective_task_count (json_t *parallelism,
                                       double load, 
-                                      int all_nodes,
+                                      int max_task_count,
                                       int cores_per_node);
         private:
          double k = 0.9;
