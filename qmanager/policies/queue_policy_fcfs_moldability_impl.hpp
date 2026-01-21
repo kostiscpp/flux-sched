@@ -78,8 +78,8 @@ std::tuple<int, int, int> queue_policy_fcfs_moldability_t<reapi_type>::selector_
 
     all_ranks = idset_decode (all_ids);
     core_ranks = idset_decode (core_ids);
-    // return all nodes count, free nodes and cores per node
-    return std::make_tuple(idset_count (all_ranks), (idset_count (all_ranks) - idset_count (alloc_down_ranks)), idset_count (core_ranks));
+    // return all nodes count, used nodes and cores per node
+    return std::make_tuple(idset_count (all_ranks), idset_count (alloc_down_ranks), idset_count (core_ranks));
 }
 
 template<class reapi_type>
@@ -90,7 +90,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_largest_fit_t::select(
                                                                                 json_t *parallelism)  
 { 
     size_t n = json_array_size (task_counts);
-    auto [all_nodes, free_nodes, cores_per_node] = this->get_cores (h);
+    auto [all_nodes, used_nodes, cores_per_node] = this->get_cores (h);
     
     if (all_nodes == -1) return -1;
     int best_idx = -1;
@@ -112,7 +112,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_largest_fit_t::select(
             min_idx = (int)i;
         }
         // best fit: largest <= free_cores
-        if (count <= free_nodes*cores_per_node && count > best_count) {
+        if (count <= (all_nodes - used_nodes)*cores_per_node && count > best_count) {
             best_count = count;
             best_idx = (int)i;
         }
@@ -220,8 +220,8 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
         }
         
     }
-    auto [all_nodes, free_nodes, cores_per_node] = this->get_cores (h);
-    load = (free_nodes * cores_per_node + load) / (all_nodes * cores_per_node);
+    auto [all_nodes, used_nodes, cores_per_node] = this->get_cores (h);
+    load = (used_nodes * cores_per_node + load) / (all_nodes * cores_per_node);
     if (load > 1.0) load = 1.0;
     //std::cout << "load=" << load << std::endl;
     long long max_task_count = 1;
@@ -326,7 +326,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *job
                 return -1;
             }
 
-            auto [all_nodes, free_nodes, cores_per_node] = m_selector->get_cores (h);
+            auto [all_nodes, used_nodes, cores_per_node] = m_selector->get_cores (h);
             int node_count = (json_integer_value (count) + cores_per_node - 1) / cores_per_node;
             json_t *new_res0 = json_pack_ex (
                 &jerr, 0, 
