@@ -50,7 +50,6 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
                              json_t *task_counts,
                              json_t *durations,
                              json_t *parallelism) = 0;
-        protected:
          std::tuple<int, int, int> get_cores (void *h);
     };
     class selector_largest_fit_t final : public selector_t {
@@ -87,10 +86,10 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
     int pack_jobs (void *h, json_t *jobs);
     int allocate_jobs (void *h, bool use_alloced_queue);
     int recursive_get_slot_count (int *slot_count,
-                                     json_t *curr_resource,
-                                     json_error_t *error,
-                                     bool *is_node_specified,
-                                     int level);
+                                  json_t *curr_resource,
+                                  json_error_t *error,
+                                  bool *is_node_specified,
+                                  int level);
     bool m_queue_depth_limit = false;
     job_map_iter m_iter;
 };

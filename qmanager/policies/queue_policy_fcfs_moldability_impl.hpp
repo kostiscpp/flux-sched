@@ -25,7 +25,7 @@ namespace detail {
 ////////////////////////////////////////////////////////////////////////////////
 
 template<class reapi_type>
-std::tuple<int, int, int> queue_policy_fcfs_moldability_t<reapi_type>::selector_t::get_cores(void *h) 
+std::tuple<int, int, int> queue_policy_fcfs_moldability_t<reapi_type>::selector_t::get_cores (void *h) 
 {
     int rc = -1;
     flux_t *fh = (flux_t *)h;
@@ -131,12 +131,17 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::effective_task
                                                                                            int cores_per_node) 
 {
     int cluster_size = 2 * ((max_task_count + cores_per_node - 1) / cores_per_node) * cores_per_node;
+    //std::cout << "cluster_size=" << cluster_size << std::endl;
     if (!parallelism || !json_is_number(parallelism))
         return -1;
     double p_app = json_number_value(parallelism);
+    //std::cout << "p_app=" << p_app << std::endl;
     double p_min = cluster_size * (1 - k) * std::pow ((p_app / cluster_size), delta);
+    //std::cout << "p_min=" << p_min << std::endl;
     double p_max = std::min(gamma * p_app * (1 - beta * load), (double)cluster_size);
+    //std::cout << "p_max=" << p_max << std::endl;
     double p_eff = p_min + (p_max - p_min) * (1 + std::tanh(b * (load_breakpoint - load))) / 2;
+    //std::cout << "p_eff=" << p_eff << std::endl;
     double scale = 1;
     if (scale * p_eff < 0) 
         return 0;
@@ -218,8 +223,8 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
     auto [all_nodes, free_nodes, cores_per_node] = this->get_cores (h);
     load = (free_nodes * cores_per_node + load) / (all_nodes * cores_per_node);
     if (load > 1.0) load = 1.0;
-
-    int max_task_count = 1;
+    //std::cout << "load=" << load << std::endl;
+    long long max_task_count = 1;
     ssize_t n = json_array_size (task_counts);
     for (size_t i = 0; i < n; i++) {
         json_t *tc = json_array_get (task_counts, i);
@@ -237,9 +242,8 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
     if((best_task_count = effective_task_count (parallelism, load, max_task_count, cores_per_node)) < 0) {
         return 0;
     }
-
+    //std::cout << best_task_count << std::endl;
     int closest_task_count = INT_MAX, best_i = -1;
-    ssize_t n = json_array_size (task_counts);
     for (size_t i = 0; i < n; i++) {
         json_t *tc = json_array_get (task_counts, i);
         if (!json_is_integer (tc))
@@ -249,7 +253,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
         if (count <= 0)
             continue;
         // record smallest for fallback
-        if (std::abs(count - best_task_count) < std::abs(closest_task_count - best_task_count)) {
+        if (std::abs (count - best_task_count) < std::abs (closest_task_count - best_task_count)) {
             closest_task_count = count;
             best_i = (int)i;
         }
@@ -263,7 +267,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::select_from (void *h, json_t *t
 {
     if (!m_selector)
         m_selector = std::make_unique<selector_largest_fit_t>();
-    return m_selector->select(this, h, task_counts, durations, parallelism);
+    return m_selector->select (this, h, task_counts, durations, parallelism);
 }
 
 template<class reapi_type>
@@ -281,6 +285,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *job
         json_t *jobspec_obj = json_loads (job->jobspec.c_str (), 0, &jerr);
         json_t *resources_obj;
         json_t *system_obj;
+        json_t *tasks_obj;
         json_t *task_counts;
         json_t *durations;
         int idx;
@@ -288,12 +293,14 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *job
         if (json_unpack_ex (jobspec_obj,
                             &jerr,
                             0,
-                            "{s:{s:o} s:o}",
+                            "{s:{s:o} s:o s:o}",
                             "attributes",
                             "system",
                             &system_obj,
                             "resources",
-                            &resources_obj
+                            &resources_obj,
+                            "tasks",
+                            &tasks_obj
                             ) == 0
             && (task_counts = json_object_get (system_obj, "task_counts"))
             && (durations = json_object_get (system_obj, "durations"))
@@ -311,11 +318,31 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *job
                 errno = EINVAL;
                 return -1;
             }
-            json_object_set_new (res0, "count", json_incref(count));                      
+            json_t* task0 = json_array_get (tasks_obj, 0);
+            if (!json_is_object (task0)) {
+                // malformed jobspec (should not be able to be reached)
+                json_decref (jobs);
+                errno = EINVAL;
+                return -1;
+            }
+
+            auto [all_nodes, free_nodes, cores_per_node] = m_selector->get_cores (h);
+            int node_count = (json_integer_value (count) + cores_per_node - 1) / cores_per_node;
+            json_t *new_res0 = json_pack_ex (
+                &jerr, 0, 
+                "{s:s,s:i,s:[{s:s,s:i,s:[{s:s,s:i}],s:s}],s:b}",
+                "type", "node", "count",  node_count, "with", 
+                "type", "slot", "count",  std::min((int)json_integer_value (count), (int)cores_per_node), "with",
+                "type", "core", "count", 1,
+                "label", "task",
+                "exclusive", true
+            );
+            json_array_set_new (resources_obj, 0, new_res0);                      
             json_object_set_new (system_obj, "duration", json_incref(duration));
+            json_object_set_new (task0, "count", json_pack_ex (&jerr, 0, "{s:i}", "total", json_incref (count)));
         }
 
-        job->jobspec = std::string(json_dumps (jobspec_obj, JSON_COMPACT));
+        job->jobspec = std::string (json_dumps (jobspec_obj, JSON_COMPACT));
         json_decref (jobspec_obj);
         if (!(jobdesc =
                   json_pack ("{s:I s:s}", "jobid", job->id, "jobspec", job->jobspec.c_str ()))) {
