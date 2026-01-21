@@ -253,9 +253,13 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
         if (count <= 0)
             continue;
         // record smallest for fallback
+        //std::cout << "count =" << count << std::endl;
+        //std::cout << "closest_task_count =" << closest_task_count << std::endl;
+        //std::cout << "best_task_count =" << best_task_count << std::endl;
         if (std::abs (count - best_task_count) < std::abs (closest_task_count - best_task_count)) {
             closest_task_count = count;
             best_i = (int)i;
+            //std::cout << "closest: " << closest_task_count << " at : " << best_i << std::endl;
         }
     }
 
@@ -339,10 +343,11 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *job
             );
             json_array_set_new (resources_obj, 0, new_res0);                      
             json_object_set_new (system_obj, "duration", json_incref(duration));
-            json_object_set_new (task0, "count", json_pack_ex (&jerr, 0, "{s:i}", "total", json_incref (count)));
+            json_object_set_new (task0, "count", json_pack_ex (&jerr, 0, "{s:i}", "total", (int)json_integer_value (count)));
         }
 
         job->jobspec = std::string (json_dumps (jobspec_obj, JSON_COMPACT));
+        //std::cout << job->jobspec << std::endl;
         json_decref (jobspec_obj);
         if (!(jobdesc =
                   json_pack ("{s:I s:s}", "jobid", job->id, "jobspec", job->jobspec.c_str ()))) {
@@ -480,42 +485,46 @@ int queue_policy_fcfs_moldability_t<reapi_type>::transform_R (const char *R_in, 
         json_decref (R_obj);
         return -1;
     }
-    if (!(resources = json_object_get (jobspec_obj, "resources")) || !json_is_array (resources)) {
-        json_decref (resources);
+    if (json_unpack_ex (jobspec_obj,
+                            &jerr,
+                            0,
+                            "{s:[{s:{s:i}}]}",
+                            "tasks",
+                            "count",
+                            "total",
+                            &total_slots) != 0) {
         json_decref (jobspec_obj);
         json_decref (R_obj);
+        //std::cout << "something\n";
         return -1;
     }
-
-    if (recursive_get_slot_count (&total_slots,
-                                      resources,
-                                      &jerr,
-                                      &is_node_specified,
-                                      0) < 0) {
-            json_decref (resources);
-            json_decref (jobspec_obj);
-            json_decref (R_obj);
-            return -1;
-        }
+    
+    // if (recursive_get_slot_count (&total_slots,
+    //                                   resources,
+    //                                   &jerr,
+    //                                   &is_node_specified,
+    //                                   0) < 0) {
+    //         json_decref (resources);
+    //         json_decref (jobspec_obj);
+    //         json_decref (R_obj);
+    //         return -1;
+    //     }
 
     if (!(exec = json_object_get (R_obj, "execution")) || !json_is_object(exec)) {
-        json_decref (resources);
         json_decref (jobspec_obj);
         json_decref (R_obj);
         return -1;
     }
-
+    
     json_object_set_new(exec, "nslots", json_integer(total_slots));
     if (!(*R_out = json_dumps(R_obj, JSON_COMPACT))) {
         json_decref (exec);
-        json_decref (resources);
         json_decref(jobspec_obj);
         json_decref(R_obj);
         return -1;
     }
 
     json_decref (exec);
-    json_decref (resources);
     json_decref(jobspec_obj);
     json_decref(R_obj);
     return 0;
