@@ -125,29 +125,30 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_largest_fit_t::select(
 }
 
 template<class reapi_type>
-int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::effective_task_count (json_t *parallelism, 
+int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::effective_task_count (void *h, json_t *parallelism, 
                                                                                            double load,
                                                                                            int max_task_count, 
                                                                                            int cores_per_node) 
 {
+    flux_log ((flux_t *)h, 0, "max_task_count= %d, cores_per_node= %d\n", max_task_count, cores_per_node);
     int cluster_size = 2 * ((max_task_count + cores_per_node - 1) / cores_per_node) * cores_per_node;
-    //std::cout << "cluster_size=" << cluster_size << std::endl;
+    flux_log ((flux_t *)h, 0, "cluster_size= %d\n", cluster_size);
     if (!parallelism || !json_is_number(parallelism))
         return -1;
     double p_app = json_number_value(parallelism);
-    //std::cout << "p_app=" << p_app << std::endl;
+    flux_log ((flux_t *)h, 0, "p_app=%f", p_app);
     double p_min = cluster_size * (1 - k) * std::pow ((p_app / cluster_size), delta);
-    //std::cout << "p_min=" << p_min << std::endl;
+    flux_log ((flux_t *)h, 0, "p_min=%f", p_min);
     double p_max = std::min(gamma * p_app * (1 - beta * load), (double)cluster_size);
-    //std::cout << "p_max=" << p_max << std::endl;
+    flux_log ((flux_t *)h, 0, "p_max=%f", p_max);
     double p_eff = p_min + (p_max - p_min) * (1 + std::tanh(b * (load_breakpoint - load))) / 2;
-    //std::cout << "p_eff=" << p_eff << std::endl;
+    flux_log ((flux_t *)h, 0, "p_eff=%f", p_eff);
     double scale = 1;
     if (scale * p_eff < 0) 
         return 0;
     else if (scale * p_eff > cluster_size)
         return cluster_size;
-    return std::round(scale * p_eff);
+    return std::round(scale * p_eff); 
 }
 
 template<class reapi_type>
@@ -223,7 +224,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
     auto [all_nodes, used_nodes, cores_per_node] = this->get_cores (h);
     load = (used_nodes * cores_per_node + load) / (all_nodes * cores_per_node);
     if (load > 1.0) load = 1.0;
-    //std::cout << "load=" << load << std::endl;
+    flux_log((flux_t *)h, 0, "load=%f", load);
     long long max_task_count = 1;
     ssize_t n = json_array_size (task_counts);
     for (size_t i = 0; i < n; i++) {
@@ -239,10 +240,10 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
             max_task_count = count;
     }
 
-    if((best_task_count = effective_task_count (parallelism, load, max_task_count, cores_per_node)) < 0) {
+    if((best_task_count = effective_task_count (h, parallelism, load, max_task_count, cores_per_node)) < 0) {
         return 0;
     }
-    //std::cout << best_task_count << std::endl;
+    flux_log ((flux_t *)h, 0, "%d\n", best_task_count);
     int closest_task_count = INT_MAX, best_i = -1;
     for (size_t i = 0; i < n; i++) {
         json_t *tc = json_array_get (task_counts, i);
@@ -253,13 +254,13 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::select (queue_
         if (count <= 0)
             continue;
         // record smallest for fallback
-        //std::cout << "count =" << count << std::endl;
-        //std::cout << "closest_task_count =" << closest_task_count << std::endl;
-        //std::cout << "best_task_count =" << best_task_count << std::endl;
+        flux_log ((flux_t *)h, 0, "count = %d\n", count);
+        flux_log ((flux_t *)h, 0, "closest_task_count = %d\n", closest_task_count);
+        flux_log ((flux_t *)h, 0, "best_task_count = %d\n", best_task_count);
         if (std::abs (count - best_task_count) < std::abs (closest_task_count - best_task_count)) {
             closest_task_count = count;
             best_i = (int)i;
-            //std::cout << "closest: " << closest_task_count << " at : " << best_i << std::endl;
+            flux_log ((flux_t *)h, 0, "closest: %d at : %d\n", closest_task_count, best_i);
         }
     }
 
@@ -347,7 +348,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::pack_jobs (void *h, json_t *job
         }
 
         job->jobspec = std::string (json_dumps (jobspec_obj, JSON_COMPACT));
-        //std::cout << job->jobspec << std::endl;
+        flux_log ((flux_t *)h, 0, "%s\n", job->jobspec.c_str());
         json_decref (jobspec_obj);
         if (!(jobdesc =
                   json_pack ("{s:I s:s}", "jobid", job->id, "jobspec", job->jobspec.c_str ()))) {
@@ -495,7 +496,6 @@ int queue_policy_fcfs_moldability_t<reapi_type>::transform_R (const char *R_in, 
                             &total_slots) != 0) {
         json_decref (jobspec_obj);
         json_decref (R_obj);
-        //std::cout << "something\n";
         return -1;
     }
     
