@@ -134,7 +134,7 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::effective_task
                                                                                            int cores_per_node) 
 {
     //flux_log ((flux_t *)h, 0, "max_task_count= %d, cores_per_node= %d\n", max_task_count, cores_per_node);
-    int cluster_size = 2 * ((max_task_count + cores_per_node - 1) / cores_per_node) * cores_per_node;
+    int cluster_size = 2 * ((max_task_count + cores_per_node - 1) / cores_per_node);
     //flux_log ((flux_t *)h, 0, "cluster_size= %d\n", cluster_size);
     if (!parallelism || !json_is_number(parallelism))
         return -1;
@@ -150,8 +150,8 @@ int queue_policy_fcfs_moldability_t<reapi_type>::selector_tanh_t::effective_task
     if (scale * p_eff < 0) 
         return 0;
     else if (scale * p_eff > cluster_size)
-        return cluster_size;
-    return std::round(scale * p_eff); 
+        return cluster_size * cores_per_node;
+    return std::round(scale * p_eff) * cores_per_node; 
 }
 
 template<class reapi_type>

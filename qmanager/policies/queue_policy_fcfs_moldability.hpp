@@ -73,11 +73,11 @@ class queue_policy_fcfs_moldability_t : public queue_policy_base_t {
                                       int max_task_count,
                                       int cores_per_node);
         private:
-         double k = 0.9;
+         double k = 0.8;
          double b = 8.0;
          double beta = 0.7; 
-         double gamma = 3.0;
-         double delta = 0.3; 
+         double gamma = 2.0;
+         double delta = 0.9; 
          double load_breakpoint=0.8;
     };
     std::unique_ptr<selector_t> m_selector;
