@@ -30,7 +30,8 @@ const std::map<std::string, std::string> policies =
      {"lonodex", "policy=low node_centric=true node_exclusive=true"},
      {"hinodex", "policy=high node_centric=true node_exclusive=true"},
      {"locality", ""},
-     {"variation", ""}};
+     {"variation", ""},
+     {"cosched", ""}};
 
 const std::vector<std::string> policy_options = {"policy",
                                                  "node_centric",
@@ -149,6 +150,12 @@ std::shared_ptr<dfu_match_cb_t> create_match_cb (const std::string &policy_reque
         }
         if (policy_requested == "variation") {
             matcher = std::make_shared<var_aware_t> ();
+        }
+        if (policy_requested == "cosched") {
+            std::shared_ptr<cosched_t> ptr = std::make_shared<cosched_t> ();
+            ptr->add_score_factor (node_rt, 1, 1000);
+            ptr->add_score_factor (socket_rt, 1, 100);
+            matcher = ptr;
         }
 
         if (parse_bool_match_options ("high", policy)) {

@@ -21,6 +21,9 @@
 #include "resource/policies/dfu_match_var_aware.hpp"
 #include "resource/policies/dfu_match_multilevel_id.hpp"
 #include "resource/policies/dfu_match_multilevel_id_impl.hpp"
+#include "resource/policies/dfu_match_cosched.hpp"
+#include "resource/policies/dfu_match_multilevel_id_cosched.hpp"
+#include "resource/policies/dfu_match_multilevel_id_cosched_impl.hpp"
 
 namespace Flux {
 namespace resource_model {

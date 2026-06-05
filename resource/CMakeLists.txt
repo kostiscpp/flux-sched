@@ -15,6 +15,9 @@ set(RESOURCE_HEADERS
     policies/dfu_match_low_id_first.hpp
     policies/dfu_match_multilevel_id.hpp
     policies/dfu_match_multilevel_id_impl.hpp
+    policies/dfu_match_cosched.hpp
+    policies/dfu_match_multilevel_id_cosched.hpp
+    policies/dfu_match_multilevel_id_cosched_impl.hpp
     policies/dfu_match_locality.hpp
     policies/dfu_match_var_aware.hpp
     policies/dfu_match_policy_factory.hpp
