@@ -111,7 +111,7 @@ void multilevel_id_cosched_t<FOLD>::count_free_under_u (vtx_t u,
             if (free[g[tgt].id % m_nwise] > m_best_free) {
                 m_best_free = free[g[tgt].id % m_nwise];
                 m_best_free_i = g[tgt].id % m_nwise;
-                std::cout << "m_best_free_i_cfu =" << m_best_free_i << std::endl;
+                //std::cout << "m_best_free_i_cfu =" << m_best_free_i << std::endl;
             }
         }
         count_free_under_u (tgt, g, t, free);
@@ -169,8 +169,8 @@ int multilevel_id_cosched_t<FOLD>::dom_discover_vtx (vtx_t u,
         m_best_free = 0;
         m_best_free_i = 0;
         count_free_under_u (u, g, core_rt, m_free_cores);
-        std::cout << "even = " << m_free_cores[0] << ", odd= " << m_free_cores[1] << std::endl;
-        std::cout << m_best_free << ", " << m_best_free_i << std::endl;
+        //std::cout << "even = " << m_free_cores[0] << ", odd= " << m_free_cores[1] << std::endl;
+        //std::cout << m_best_free << ", " << m_best_free_i << std::endl;
     }
     incr ();
     return 0;
