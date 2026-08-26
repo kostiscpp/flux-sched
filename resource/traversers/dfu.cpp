@@ -382,6 +382,7 @@ int dfu_traverser_t::run (Jobspec::Jobspec &jobspec,
     std::unordered_map<resource_type_t, int64_t> dfv;
 
     traverser->prime_jobspec (jobspec.resources, dfv);
+    traverser->set_task_labels (jobspec.tasks, jobspec.attributes.system);
     if (meta.build (jobspec, detail::jobmeta_t::alloc_type_t::AT_ALLOC, jobid, *at, graph_duration)
         < 0)
         return -1;
