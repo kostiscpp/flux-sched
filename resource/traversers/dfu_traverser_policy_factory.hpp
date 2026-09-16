@@ -15,6 +15,8 @@
 #include <memory>
 #include "resource/traversers/dfu_impl.hpp"
 #include "resource/traversers/dfu_flexible.hpp"
+#include "resource/traversers/dfu_flexible_largest_fit.hpp"
+#include "resource/traversers/dfu_flexible_argilos.hpp"
 
 namespace Flux {
 namespace resource_model {
@@ -22,6 +24,8 @@ namespace detail {
 
 const std::string SIMPLE = "simple";
 const std::string FLEXIBLE = "flexible";
+const std::string FLEXIBLE_LARGEST_FIT = "flexible_largest_fit";
+const std::string FLEXIBLE_ARGILOS = "flexible_argilos";
 
 bool known_traverser_policy (const std::string &policy);
 

@@ -1204,6 +1204,26 @@ void dfu_impl_t::reset_color ()
     m_color.reset ();
 }
 
+void dfu_impl_t::set_task_labels (const std::vector<Task> &tasks, const System &sys)
+{
+    m_task_labels.clear ();
+    m_durations.clear ();
+    for (auto task : tasks) {
+        m_task_labels.insert (task.slot);
+
+        auto it = sys.optional.find ("durations");
+        if (it != sys.optional.end ()) {
+            const auto &durations = it->second;
+            for (const auto &duration : durations[task.slot]) {
+                m_durations[task.slot].push_back (
+                    static_cast<int64_t> (duration.as<double> ())
+                );
+            }
+        }
+    }
+}
+
+
 int dfu_impl_t::reset_exclusive_resource_types (const std::set<resource_type_t> &x_types)
 {
     return m_match->reset_exclusive_resource_types (x_types);

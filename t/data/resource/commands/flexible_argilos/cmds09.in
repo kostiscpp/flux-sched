@@ -1,0 +1,10 @@
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_argilos/test001.yaml
+quit

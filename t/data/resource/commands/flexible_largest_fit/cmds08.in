@@ -1,0 +1,2 @@
+match allocate @TEST_SRCDIR@/data/resource/jobspecs/flexible_largest_fit/test008.yaml
+quit

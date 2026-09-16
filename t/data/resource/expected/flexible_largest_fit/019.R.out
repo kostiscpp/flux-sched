@@ -1,0 +1,26 @@
+      ---------------core32[1:x]
+      ---------------core33[1:x]
+      ---------------core34[1:x]
+      ---------------core35[1:x]
+      ------------socket1[1:s]
+      ---------node0[1:s]
+      ------rack0[1:s]
+      ---small0[1:s]
+INFO: =============================
+INFO: JOBID=1
+INFO: RESOURCES=ALLOCATED
+INFO: SCHEDULED AT=Now
+INFO: =============================
+      ---------------core28[1:x]
+      ---------------core29[1:x]
+      ---------------core30[1:x]
+      ---------------core31[1:x]
+      ------------socket1[1:s]
+      ---------node0[1:s]
+      ------rack0[1:s]
+      ---small0[1:s]
+INFO: =============================
+INFO: JOBID=2
+INFO: RESOURCES=ALLOCATED
+INFO: SCHEDULED AT=Now
+INFO: =============================
