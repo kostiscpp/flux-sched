@@ -1215,7 +1215,7 @@ void dfu_impl_t::set_task_labels (const std::vector<Jobspec::Task> &tasks)
 {
     m_task_labels.clear ();
     for (auto task : tasks) {
-        m_task_labels.push_back (task.slot);
+        m_task_labels.insert (task.slot);
     }
 }
 

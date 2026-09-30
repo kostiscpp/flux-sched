@@ -685,7 +685,6 @@ class dfu_impl_t {
     resource_graph_t *m_graph = nullptr;
     std::shared_ptr<resource_graph_db_t> m_graph_db = nullptr;
     std::shared_ptr<dfu_match_cb_t> m_match = nullptr;
-    std::vector<std::string> m_task_labels;
     std::unordered_set<std::string> m_task_labels;
     std::unordered_map<std::string, std::vector<int64_t>> m_durations;
     expr_eval_api_t m_expr_eval;
