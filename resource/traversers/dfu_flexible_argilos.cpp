@@ -319,7 +319,7 @@ int dfu_flexible_argilos_t::select (std::vector<Jobspec::Resource> &resources,
             // Success - update the passed resources to the matching variant
             resources = std::move (candidate);
             return 0;
-        }
+        } else break;
     }
 
     return -1;
