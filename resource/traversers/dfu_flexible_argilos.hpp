@@ -58,7 +58,7 @@ class dfu_flexible_argilos_t : public dfu_flexible_t {
     ~dfu_flexible_argilos_t ();
 
    private:
-    double b = 0.8;
+    double b = 8.0;
     double beta = 0.7;
     double k = 0.8;
     double load_breakpoint = 0.8;
